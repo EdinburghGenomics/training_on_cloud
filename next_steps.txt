@@ -1,0 +1,64 @@
+So I have pretty much nailed the summarize_instances thing.
+
+And I've investigated options for s3 mounting.
+
+And I've noted how to make a suitable VM image (see written notes).
+
+Now we need to:
+
+1) Recreate the last training image on EC2, with a 40GB (or 80?? - let's say 60) drive and large files on S3.
+1a) Check that a move to Ubuntu is OK
+2a) Test everything on Ubuntu
+
+2) Work out how to get the thin clients to connect by piecing stuff together
+2a) Conversion of tigervnc to a squashfs package for the thin clients(?)
+2b) Hosting of the summary script wherever ( DONE - https://auth.genomics.ed.ac.uk/cgi-bin/si )
+2c) Scripting of startup on the thin clients (maybe move from training to ?where?)
+
+3) Prepare instructions for Mac/Linux clients and test
+3a) Test multiple clients in the training room
+3b) Establish cost
+
+4) Prepare instructions for snapshotting and policy on what to keep
+
+This needs to include putting the large files on S3 and linking them
+Other than that, simply snapshot master VM and we're good. My suggestion is
+that an egadmin account is added on the VM with no-pass sudo access and all our
+personal keys are added to this. Connection to the training account will
+be via ssh+sudo or else via tigervnc.
+
+Done! Wrote script and instrux for S3.
+
+5) Make tigervnc run on startup.
+
+Should be easy, right? https://fedoramagazine.org/systemd-getting-a-grip-on-units/
+https://askubuntu.com/questions/676007/how-do-i-make-my-systemd-service-run-via-specific-user-and-start-on-boot
+
+Yes, the latter link gave me everything. Note that by use of the -autokill switch, along with Restart=on-failure,
+logging out from XFCE causes the VNC session to terminate but systemd immediately restarts it so you can log
+in to a fresh desktop. Ideal. Everything is in the Ansible playbook.
+
+6) Profit!
+
+7) Work out the simplest way to launch multiple instances. See multi_launch.txt.
+
+May need to rethink my ideas about tags? Hmmm.
+
+When I try to launch a new instance it default to having no public IP. Is this right?
+What is the setting for my original instance? How do I check? I can't see it. Arghh.
+
+Let's try launching an instance without this selected and see what happens.
+
+Well of course it comes up without a pubic IP. Can I add one?
+Apparently not (!?). https://serverfault.com/questions/706560/assign-public-ip-not-elastic-ip-after-instance-launched
+I think Amazon has reasons to conserve its IP address pool and thus artificially blocks this.
+I guess IPV6 is the long-term answer. Maybe we can ask the next sysadmin to look into enabling this?
+https://www.jisc.ac.uk/ipv6
+
+In the meantime, the instance I need is t3.medium - this seems pretty clear. Slightly
+cheaper than t2. And I think I need to have 'unlimited' mode on, even though it can lead to
+extra charges I don't want to be throttled.
+
+But what is EBS optimized and does it help me?? Probably not - leave it off for now.
+Oh, it seems I'm forced to have it on. OK? I'll leave it on.
+

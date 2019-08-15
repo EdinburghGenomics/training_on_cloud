@@ -1,0 +1,19 @@
+So.
+
+I have files mounted on my local machine at /mnt/qcow
+Only root can read them.
+
+I can log into the VM as user ubuntu using the tb1.pem key.
+
+I need root on the remote machine in order to write the files.
+
+And I want to avoid overwriting any links.
+
+--ignore-existing --progress
+
+So:
+
+$ sudo -i
+# cd /mnt/qcow/home/training
+
+$ rsync -e "ssh -i ~tbooth2/Downloads/tb1.pem" --rsync-path="sudo rsync" --ignore-existing --progress -av 01_* ubuntu@ec2-34-243-178-99.eu-west-1.compute.amazonaws.com:/home/training/ --exclude='.*'

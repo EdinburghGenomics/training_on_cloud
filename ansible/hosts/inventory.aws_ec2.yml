@@ -1,0 +1,16 @@
+# See https://docs.ansible.com/ansible/latest/plugins/inventory.html#inventory-plugins
+plugin: aws_ec2
+# See ~/.aws/credentials
+boto_profile: default
+regions:
+  - eu-west-1
+keyed_groups:
+  # This seems the simplest all-purpose mapping?
+  - key: tags
+    prefix: tag
+  # And this pulls out IAM roles
+  - key: 'iam_instance_profile.arn'
+    prefix: role
+#strict: true
+compose:
+  ansible_host: public_dns_name

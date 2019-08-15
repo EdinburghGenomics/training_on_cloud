@@ -1,0 +1,28 @@
+# Set up the training base image. You should start by creating an instance
+# with the tag Role=trainingbase to serve as a master image. You can set this
+# easily in the EC2 console, and check it exists with:
+#  $ ansible-inventory --graph --verbose
+#- hosts: tag_Role_trainingvm
+- hosts: tag_Name_training_24
+  become: yes
+  tasks:
+
+    # If these are OK then we need to remove them from ~training/Software
+    - name: Install some missing commands
+      apt:
+        install_recommends: yes
+        name:
+            - tree
+            - cutadapt
+            - fastqc
+
+    - name: Purge xscreensaver
+      apt:
+        purge: yes
+        state: absent
+        autoremove: yes
+        name:
+            - xscreensaver
+
+    # Let the VM tag itself with a name
+    - import_tasks: make_self_tagging.yml

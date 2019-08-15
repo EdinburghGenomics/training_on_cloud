@@ -1,0 +1,23 @@
+Where are my notes on how I got access to the thin client 04 on the desk and made VNC
+work?
+
+I'm not sure.
+
+I gained access using the reset-on-boot and then the default password.
+My notes simply say:
+
+"Boot with 'G' then admin/admin"
+
+Then I got a shell and unpacked TigerVNC from a USB stick. I also remember I set
+a root password which the thin client says is not for local access but of course
+you can force a root prompt easily enough.
+
+Command for connection is:
+???
+
+But I think what I really want to do is get on the training server, work out how
+spice-client was packaged up (by Stuart?!) and then repeat that to push TigerVNC as
+a snap to all thin clients and to add a script to get them to auto-connect, based on
+their ID numbers (how do they know these numbers?).
+
+But I can put this aside for now.

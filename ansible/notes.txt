@@ -1,0 +1,73 @@
+I'd like to make an ansible playbook that goes from a bare Ubuntu VM to
+one we can use for the courses.
+
+There is a fair amount to do but let's start with testing that we can run a basic
+command with sudo.
+
+Is there any standard way to get Ansible to talk to an ec2 instance or must I roll
+my own?
+
+Looks like it's well supported:
+
+https://docs.ansible.com/ansible/latest/scenario_guides/guide_aws.html
+https://docs.ansible.com/ansible/latest/user_guide/intro_dynamic_inventory.html
+
+The last of these says that you should always prefer plugins over scripts, then goes on
+to show you how to do everything with scripts. Meh. Let's try this instead:
+
+https://docs.ansible.com/ansible/latest/plugins/inventory.html
+
+So my first task is to configure Ansible on my laptop and then list my EC2 resources.
+
+K.
+
+Well, I did as I was told but I get:
+
+inventory_ec2_min.yml did not meet aws_ec2 requirements, check plugin documentation if this is unexpected
+
+But it all looks fine to me??? What is wrong? Oh - the name needs to be *.aws_ec2.yml. OK, now it
+works and the keyed_groups kinda makes sense.
+
+And I can put the file into ~/.ansible/hosts and set this in the config to auto-find it.
+
+$ /home/tbooth2/py3venv/bin/ansible-inventory --graph --verbose
+
+Next?
+
+$ /home/tbooth2/py3venv/bin/ansible -u ubuntu --private-key ~/Downloads/tb1.pem -m ping tag_Name_training_01
+
+Fails due to lack of Py2. But adding this file fixes it... note it needs to be Python 3.5+.
+I can also set the value for private-key at the host or group level to save passing it each time,
+and ditto the user to log in as.
+
+$ head ~/.ansible/hosts/group_vars/*
+==> /home/tbooth2/.ansible/hosts/group_vars/all <==
+ansible_python_interpreter: /usr/bin/python3
+
+==> /home/tbooth2/.ansible/hosts/group_vars/tag_Name_training_01 <==
+ansible_ssh_private_key_file: ~/Downloads/tb1.pem
+ansible_user: ubuntu
+
+So, with these files in place and the config set, I can ping. Let us write a playbook that does something as root.
+
+ansible/playbooks/test1.yml - lovely.
+
+Now to turn all the gubbins I did before into playbooks.
+
+ansible/playbooks/training_setup.yml
+
+$ /home/tbooth2/py3venv/bin/ansible-playbook ansible/playbooks/training_setup.yml
+
+Yes this looks good. I made a playbook that sets up:
+
+* TigerVNC
+* R + RStudio
+* Firefox and Chrome browsers
+* XFCE4 and tries to disable the screensaver (check it does!)
+* training and egadmin accounts
+
+I tested it on my already-set-up image. So now my TODO list is:
+
+1) Work out how to auto-start TigerVNC on boot. Should make use of systemd (see next_steps.txt).
+2) Test the build on a fresh Ubuntu with 40GB disk (do I get a working VNC desktop)
+3) See next_steps.txt

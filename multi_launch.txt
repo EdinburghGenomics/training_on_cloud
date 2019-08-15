@@ -1,0 +1,62 @@
+For starting the courses, we'll need to start a whole bunch (12+) of VMs.
+
+I could write a script to do this, but I hope that the AWS idea of a 'fleet'
+will actually help me here.
+
+https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/ec2-fleet.html
+
+(I wonder if reserved inctance pricing is relevant - nope??)
+
+So I think the only question will be - how do I define a fleet with all the right
+keys? Or should I just go by machine name? But this seems less flexible if I ever
+need to shuffle machines or have two training fleets up at once.
+
+OK, having read the instrux, the fleet does not sound like the right idea.
+
+What I need is...
+
+An auto-scaling group! (That is set to not auto-scale).
+Or, in fact, I just have an option to launch N instances. Can I use this???
+
+I can add tags to identify the machines in the group, but not to identify individual
+instances within the group (as all the tags are the same).
+
+So this may force an answer to the question above - maybe I can't use tags OR names
+to locate my VMs, but instead I need to have a group tagged something like:
+
+Role=TrainingVM
+
+And then I can query the asg meta-data to decide which VM is which. Should be possible.
+
+One question - can I shut down the instances in my ASG and restart them later? Is this
+possible? If not, I'll have to go for plan C. In any case I deffo need and AMI and I deffo
+need a Launch Template.
+
+So the plan is:
+
+1) Make a brand new Ubuntu instance.
+2) Apply my playbook to it.
+3) Link the files off of S3.
+4) Copy everything else from the old /home/training
+5) (Leave other config for when Nathan is here to demo round-trip reimaging)
+
+(all done!)
+
+6) Make an AMI and a launch template
+    AMI = TraininngBase01 (oops! But it will be replaced anyway)
+    Template = TraningVM, version 1
+
+7) Launch 4 images
+
+I got the error: "snapshotId cannot be modified on root device"
+Editing the template to remove the /dev/sda1 device and add it back seemed to be all that
+was needed to fix?
+
+TODO - add a swap partition of 6GB. It looks like the S3 instances have no local ephemeral storage so this goes
+on to EBS in the usual way. I can add it before I snapshot again.
+
+And go from there.
+
+So I can launch multiple instances but I can't see a way to make the instances have different tags.
+Hmmm. It would be handy. Maybe I can have an instance tag itself on boot? That would be kinda cool.
+Let's see. (see tag_myself.py).

@@ -1,0 +1,39 @@
+# This is my method for gettingthe machines to number themselves.
+# We put a script under the 'ubuntu' user and ensure it is run as that user
+# on each startup.
+
+# Copy the script across
+- name: Copy over tag_myself.py
+  become: ubuntu
+  copy:
+    dest: /home/ubuntu/tag_myself.py
+    src: ../../tag_myself.py
+    mode: 0755
+    validate: null # This don't work: "python3 -c 'from %s import main'"
+
+# Now add the .service file to make it run at start
+- name: Add /etc/systemd/system/tag-myself-in-aws.service
+  copy:
+    dest: /etc/systemd/system/tag-myself-in-aws.service
+    mode: 0644
+    content: |
+             [Unit]
+             Description=AWS self-tagging script to be run once per startup
+
+             [Service]
+             User=ubuntu
+             WorkingDirectory=~
+             Type=oneshot
+             RemainAfterExit=true
+             StandardOutput=journal
+             ExecStart=/usr/bin/python3 ./tag_myself.py
+
+             [Install]
+             WantedBy=multi-user.target
+    validate: null
+
+# Now set the service to start on boot, but don't actually start it
+- name: Activate tag-myself-in-aws.service in systemd
+  shell: "systemctl enable tag-myself-in-aws.service"
+  args:
+    creates: /etc/systemd/system/multi-user.target.wants/tag-myself-in-aws.service

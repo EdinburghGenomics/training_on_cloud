@@ -1,0 +1,167 @@
+# Set up the training base image. You should start by creating an instance
+# with the tag Role=trainingbase to serve as a master image. You can set this
+# easily in the EC2 console, and check it exists with:
+#  $ ansible-inventory --graph --verbose
+- hosts: tag_Role_trainingbase
+  become: yes
+  tasks:
+    - name: Fetch tigervnc tarball (see https://bintray.com/tigervnc/stable/tigervnc/)
+      get_url:
+        url: https://bintray.com/tigervnc/stable/download_file?file_path=tigervnc-1.9.0.x86_64.tar.gz
+        dest: /root/tigervnc.x86_64.tar.gz
+        checksum: sha256:79b0728e7b62e9d93af9d5696c593aea3ddc8378c0f9326fae88f68435fca7c3
+
+    - name: Fetch R studio (see https://www.rstudio.com/products/rstudio/download)
+      get_url:
+        url: https://download1.rstudio.org/rstudio-xenial-1.1.463-amd64.deb
+        dest: /root/rstudio-xenial_amd64.deb
+        checksum: md5:cfd659db18619cc78d1592fefaa7c753
+
+    - name: Fetch s3fs from Ubuntu Cosmic (see https://packages.ubuntu.com/cosmic/s3fs)
+      get_url:
+        url: http://eu-west-1.ec2.archive.ubuntu.com/ubuntu/pool/universe/s/s3fs-fuse/s3fs_1.84-1_amd64.deb
+        dest: /root/s3fs_amd64.deb
+        checksum: sha256:32295c48de6bd448392a4b39fac5f2c916aa9df8531f0b69f042936c19e04ad9
+
+    # As before, have an egadmin user, and ensure this is accessible by all our
+    # standard SSH keys and has no-password sudo (like ubuntu user).
+
+    - import_tasks: make_egadmin_user.yml
+
+    # APT setup with extra repos etc...
+
+    - name: Add Google Chrome key
+      apt_key:
+        keyserver: keyserver.ubuntu.com
+        id: EB4C1BFD4F042F6DDDCCEC917721F63BD38B4796
+    - name: Add Google Chrome repo
+      apt_repository:
+        repo: "deb [arch=amd64] http://dl.google.com/linux/chrome/deb/ stable main"
+        filename: google-chrome
+
+    - name: Add CRAN package key
+      apt_key:
+        keyserver: keyserver.ubuntu.com
+        id: E298A3A825C0D65DFD57CBB651716619E084DAB9
+    - name: Add CRAN package repo
+      apt_repository:
+        repo: "deb https://cloud.r-project.org/bin/linux/ubuntu bionic-cran35/"
+        filename: cran
+
+    - name: APT update and upgrade
+      apt:
+        upgrade: full
+
+    # Done with APT configuration
+
+    - name: Install R from CRAN
+      apt:
+        update_cache: yes
+        name:
+            - r-base-core
+            - r-base-dev
+            - r-recommended
+
+
+    - name: Install RStudio as downloaded
+      apt:
+        deb: /root/rstudio-xenial_amd64.deb
+
+    # Note - this used to add 'bison' but I think we don't want it.
+    - name: Install -dev packages for R and some other dev-type stuff
+      apt:
+        name:
+            - lsb-release
+            - libfuse-dev
+            - libcurl4-gnutls-dev
+            - libssl-dev
+            - libexpat-dev
+            - libxml2-dev
+            - gfortran-5
+            - squashfs-tools
+            - awscli
+            - xmlstarlet
+            - gnuplot-x11
+            - tree
+            - cutadapt
+            - synaptic
+
+    - name: Install web browsers and also gedit
+      apt:
+        install_recommends: yes
+        update_cache: yes
+        name:
+            - firefox
+            - google-chrome-stable
+            - gedit
+
+    - name: Install xfce4 with additional addons
+      apt:
+        install_recommends: yes
+        name:
+            - xfce4
+            - xfce4-goodies
+
+    - name: Purge xserver-xorg and gnome-terminal and xscreensaver
+      apt:
+        purge: yes
+        state: absent
+        autoremove: yes
+        name:
+            - xserver-xorg
+            - gnome-terminal
+            - xscreensaver
+
+    # For complex reasons this was preventing TigerVNC restarting after a logout(!)
+    - name: Purge gpg-agent
+      apt:
+        purge: yes
+        state: absent
+        autoremove: yes
+        name:
+            - gpg-agent
+
+    # Now set up s3fs using the backported package to connect to our standard bucket,
+    # read-only, using IAM credentials provided by the TrainingVM role.
+    - name: Install s3fs from the .deb file
+      apt:
+        deb: /root/s3fs_amd64.deb
+
+    # This should add the line and make the mount point and mount it.
+    - name: Mount S3 bucket edgen-training via s3fs-fuse
+      mount:
+        path: /mnt/s3fs
+        src: s3fs#edgen-training
+        fstype: fuse
+        opts: ro,_netdev,allow_other,umask=002,uid=0,iam_role=TrainingVM,endpoint=eu-west-1,url=https://s3-eu-west-1.amazonaws.com
+        state: mounted
+
+    # Allow .squash files placed into /mnt/s3fs/autosquash to be automagically mounted
+    # Remember to make them with 'fakeroot mksquashfs . ../foo.squash -comp xz'
+    - import_tasks: auto_squashfs.yml
+
+    # Let the VM tag itself with a name
+    - import_tasks: make_self_tagging.yml
+
+    # Now make a training user and start to configure the account.
+    # Unpack TigerVNC (finally) and set it to start on boot.
+    - import_tasks: make_training_user.yml
+    - import_tasks: setup_tigervnc_for_training.yml
+
+    # We want our machines to be on UK time
+    - name: Set timezone to UK
+      timezone:
+        name: Europe/London
+
+    # Make the VM shut itself down at 6pm
+    - name: Make sleepy time go bye bye
+      copy:
+        dest: /etc/cron.d/auto-shutdown
+        content: |
+                 # Stop at 6pm if nobody is logged in via SSH
+
+                 SHELL=/bin/sh
+                 PATH=/usr/local/sbin:/usr/local/bin:/sbin:/bin:/usr/sbin:/usr/bin
+                 # m h dom mon dow user  command
+                 0   18  * *   *   root  [ -n "`who`" ] || poweroff
+        validate: null

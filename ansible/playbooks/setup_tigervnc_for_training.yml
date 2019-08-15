@@ -1,0 +1,88 @@
+# This needs to come at the and of the setup, after all the packages are installed and the
+# training account was made with initial config in place.
+
+# First, unpack TigerVNC
+# I'm doing this with 'shell' so I can fix the link. You can unpack remote files with
+# unarchive but you can't check the checksum.
+- name: Unpack latest tigervnc tarball to /opt/tigervnc
+  shell: "tar -xmaf /root/tigervnc.x86_64.tar.gz -C /opt ; ln -snrf $(ls -dtr /opt/tigervnc-* | tail -n 1) /opt/tigervnc"
+  args:
+    creates: "/opt/tigervnc/usr/bin/vncserver"
+
+# Now add the .service file I made for systemd
+- name: Add /etc/systemd/system/tigervnc-for-training-user.service
+  copy:
+    dest: /etc/systemd/system/tigervnc-for-training-user.service
+    mode: 0644
+    content: |
+             [Unit]
+             Description=TigerVNC running as training user
+
+             [Service]
+             User=training
+             WorkingDirectory=~
+             Type=forking
+             GuessMainPID=yes
+             ExecStart=/opt/tigervnc/usr/bin/vncserver -autokill :1
+             ExecStop=/opt/tigervnc/usr/bin/vncserver -kill :1
+             Restart=on-failure
+
+             [Install]
+             WantedBy=graphical.target
+    validate: null
+
+# Now add the config files to ~training/.vnc
+- name: Add ~training/.vnc
+  become_user: training
+  file:
+    state: directory
+    path: /home/training/.vnc
+    mode: 0750
+
+- name: Add ~training/.vnc/xstartup
+  become_user: training
+  copy:
+    dest: /home/training/.vnc/xstartup
+    mode: 0755
+    content: |
+             #!/bin/sh
+             # Remember if you fix this on the image, fix it in the ansible script too.
+             xrdb $HOME/.Xresources
+             setxkbmap gb
+             xsetroot -solid grey
+             #
+             # Fix to make GNOME work
+             export XKL_XMODMAP_DISABLE=1
+             #
+             # Start XFCE session in home dir
+             cd ; exec /usr/bin/xfce4-session
+    validate: null
+
+- name: Add ~training/.vnc/config
+  become_user: training
+  copy:
+    dest: /home/training/.vnc/config
+    mode: 0644
+    content: |
+             ## Remember if you fix this on the image, fix it in the ansible script too.
+             ## Common options:
+             # securitytypes=vncauth,tlsvnc
+             # desktop=sandbox
+             # geometry=2000x1200
+             # localhost
+             # alwaysshared
+    validate: null
+
+- name: Add ~training/.vnc/passwd
+  vars:
+    passwd: "letmein"
+  become_user: training
+  shell: "cd ~/.vnc && echo '{{ passwd }}' | /opt/tigervnc/usr/bin/vncpasswd -f > passwd && chmod 0600 passwd"
+  args:
+    creates: /home/training/.vnc/passwd
+
+# Now set the service to start on boot, and actually start it (without a reboot)
+- name: Activate tigervnc-for-training-user.service in systemd
+  shell: "systemctl enable tigervnc-for-training-user && systemctl start graphical.target"
+  args:
+    creates: /etc/systemd/system/graphical.target.wants/tigervnc-for-training-user.service

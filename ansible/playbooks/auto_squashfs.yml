@@ -1,0 +1,42 @@
+# Allow .squash files placed into /mnt/s3fs/autosquash to be automagically mounted
+# Remember to make them with 'fakeroot mksquashfs . ../foo.squash -comp xz'
+# Squashfs mount support is part of the core system
+
+- name: Make /etc/auto.master.d/
+  file:
+    state: directory
+    path: /etc/auto.master.d
+    mode: 0755
+
+- name: Make /mnt/autosquash/
+  file:
+    state: directory
+    path: /mnt/autosquash
+    mode: 0755
+
+# Autofs needs two separate files.
+# Note -n 10 -t 0 means retry failed mount after 10 sec and once mounted never
+# auto-unmount it.
+- name: Write autosquash.autofs
+  copy:
+    dest: /etc/auto.master.d/autosquash.autofs
+    mode: 0644
+    content: |
+             /mnt/autosquash  /etc/auto.master.d/autosquash.map -n 10 -t 0
+    validate: null
+
+# This one has the magic in it
+- name: Write autosquash.map
+  copy:
+    dest: /etc/auto.master.d/autosquash.map
+    mode: 0644
+    content: |
+             *  -fstype=squashfs,loop,ro :/mnt/s3fs/autosquash/&.squash
+    validate: null
+
+# Install the package at the end so the config is already in place
+- name: Install autofs package
+  apt:
+     name:
+        - autofs
+

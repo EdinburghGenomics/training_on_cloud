@@ -1,0 +1,10 @@
+# Log into my ec2 instance and do something as root.
+- hosts: tag_Name_training_01
+  become: yes
+  tasks:
+    - name: A simple script test
+      shell: "date > /tmp/the_date && stat /tmp/the_date && cat /tmp/the_date"
+    - name: Undo the above
+      shell: "rm /tmp/the_date"
+      args:
+        removes: "/tmp/the_date"

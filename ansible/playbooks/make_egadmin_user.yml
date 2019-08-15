@@ -1,0 +1,33 @@
+# Make an egadmin user, and ensure the account is accessible by all our
+# standard SSH keys and has no-password sudo (like ubuntu user).
+#
+# playbooks should import this like:
+#
+#  - import_tasks: make_egadmin_user.yml
+
+- name: Make an egadmin user
+  user:
+    name: egadmin
+    comment: Admin User,,,
+    shell: /bin/bash
+    group: admin
+    groups: adm,dialout,cdrom,floppy,sudo,audio,dip,video,plugdev,lxd,netdev
+
+- name: Enable password-less sudo for admin
+  copy:
+    dest: /etc/sudoers.d/10-admin-nopasswd
+    mode: 0440
+    content: |
+             # Added by make_egadmin_user.yml from Ansible
+             # Users in admin (but not sudo) do not need a password to run stuff
+             %admin ALL=(ALL) NOPASSWD:ALL
+    validate: "/usr/sbin/visudo -c -f %s"
+
+- name: Add SSH keys for users in the team
+  authorized_key:
+    user: egadmin
+    state: present
+    key: |
+         ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQC8K3JksoSEZjUT2INRewmWm0KAlttMFQ50GKlwNEGfReP/kYPJlsNMnrajEwymbuc19zNbyye5G9tvpGDN6QTCoM0g2gVnBpko7bPIn0Ie8UM6pCV/Bkf2QDbVRV12t2+M2q1t/KkBLUX7/UpHZF6u3Indbv/vc+ATzOsN5CXx1hHQ4cz4lfDaQlKjb17e82qLvk6evBtPJ+DUkH+cwAvHzsiHeiQiTZoRRjNwDxMH7bGqIoB4P6WhHtwQRzFnGU/80z21yqkCS3D40A+8zM96DTClRhd5MVnNcQPu8YlKwpqOp2N52mpMgv2lm/QmUXbUB0MLH+5+XTd0hzUU3Ud9 tbooth@mujina.genepool.private
+         ssh-rsa AAAAB3NzaC1yc2EAAAABJQAAAQEAuyMVnvRKEezqi4bz6WV2BFinf+J/VbbHfXElygdJT6iYzBeh2KHLh7A6CnZXiLC9irp1aTsqWCXLhGidRzL5cmcYxJxjIoLryrrnbp4WOOdTA8nRctAanypKVfaHb6oW6lyrpHPUM6XjRCGpfdqGb11ltiNuI6qN6Akz95xvXbAZuR9b7V72bJ34/C3vrBIQY+m6a8iCuj/NPdWPvvyVN7ZDH/rrf1WjnJfauTYbRTZnje74coG7Amfywqyj2gpZqRjy10WuNZS/3NeKXTzUQKDGmKZMkiLd5GeNfaJ3mIQjm19cANC5JfdsZYFd/beI2TCheCdOcwz6yXrDlSowLw== nmedd@bio
+    exclusive: no

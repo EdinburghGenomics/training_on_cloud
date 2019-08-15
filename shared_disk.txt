@@ -1,0 +1,189 @@
+So, we'd like a nice way to provide a shared FS for our instances. Ideas are:
+
+1) Run our own NFS server (a faff)
+2) Run EC2 NFS server, aka. EFS (requires VPC setup. Maybe we do want that?!)
+3) Not bother and just copy the files on to the image. (Yeah but Meh.)
+4) Something else (TM)
+
+s3fs-fuse looks promising. It saves all the files as regular S3 objects so there's no
+weird loopback shenanigans.
+
+I'm going to have a play with s3backer. My super plan is:
+
+1) Create a bucket. In fact, make 2.
+2) Create a squashFS with a few GB of data in there (I can use /home/tbooth2/training_diskimg/img-backing.qcow2)
+3) Also do the same just copying the data onto ext2 or... ?? Apparently ext4 then fstrim is best!
+4) Mount both on my instance, read-only
+5) Profit
+
+First for 2. I need to access the qcow2 using guestfs.
+
+sudo guestmount -a ~/training_diskimg/img-backing.qcow2 -m /dev/cl_vm-01/root --ro /mnt/qcow
+
+And now to make a squashfs. Done (simple - see /root/train_home.squashfs)
+
+Now compile s3backer on my laptop. Done (just needed libfuse-dev).
+
+Now I guess I need that bucket. I made "squash-test-1". Now to get s3backer on the case, with
+exactly 19451654144 bytes of storage. And I want the block size to match the squash, so 131072.
+
+Hmm - looks like I need to round up the size, so:
+(( 19451654144 // 131072 ) + 1 ) * 131072 == 19451740160
+
+$ s3backer --blockSize=131072 --size=19451740160 --region=eu-west-1 --prefix=s3b1/ squash-test-1 ~/mnt/s3backer
+
+The --region must be right (even though S3 tries to auto-redirect you, s3backer has no way to
+automatically pick this up).
+The --prefix allows me to have all my files in a subdir (I don't need to pre-create this).
+
+Also I need to edit /etc/fuse.conf as I can't see a way to override the option.
+
+Cool, and I already have the disk image, so:
+
+$ sudo dd if=/root/train_home.squashfs of=/home/tbooth2/mnt/s3backer/file
+
+Aye.
+
+So I'm going to push on but I think really I need s3fs-fuse. If most of the files are large and already compressed
+and read sequentially then the s3backer performance hacks are irrelevant. Hmmm.
+
+So I'm going to copy the same data over to a second bucket mounted with s3fs, and see how things look.
+I made a "s3fs-test-1" bucket and mounted it with the same credentials:
+
+$ cp ~/.s3backer_passwd ~/.passwd-s3fs
+
+# And this is where I spent a lot of time faffing with a bug in s3fs. See:
+https://github.com/s3fs-fuse/s3fs-fuse/issues/807
+
+And I never needed to copy the file above as I can pass it to the mount command:
+
+$ s3fs s3fs-test-1 ~/mnt/s3fs -o passwd_file=${HOME}/.s3backer_passwd -o endpoint=eu-west-1 -o url="https://s3-eu-west-1.amazonaws.com" -o allow_other -o uid=`id -u` -o gid=`id -g` -o umask=002
+
+Yeah. Cool.
+
+Now to copy all the junk from /mnt/qcow...
+
+I'm going to mount both of the above disks on my AWS image and see how fast they are for some common ops.
+And to make sure they work nicely with the read-only account.
+Look into:
+https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/iam-roles-for-amazon-ec2.html#instance-metadata-security-credentials
+https://sdbakoushik.blogspot.com/2017/10/mount-s3-bucket-using-iam-role_15.html
+
+And remember to disable updatedb on these areas of the FS, as per the FAQ!
+
+Before booting the test VM, I've made a ReadBuckets policy for it and made a TrainingVM role that has the
+policy attached and assigned the policy in the EC2 control panel. Cool.
+
+So, I've booted the test VM. Can I still log into it??
+Yes. And I compuled both s3backer and s3fs-fuse from source. I also checked I have sequashfs-tools.
+
+So, s3backer first off:
+
+$ sudo mkdir /mnt/s3backer
+( $ sudo chown ubuntu /mnt/s3backer )
+$ s3backer --readOnly --accessEC2IAM=TrainingVM --region=eu-west-1 --prefix=s3b1/ squash-test-1 /mnt/s3backer
+
+And obviously this failed. Let's see if I can work out why. I installed the regular aws-cli package (via APT, not
+PIP, in this case). And that works fine for listing but I can't copy. HeadObject forbidden. OK.
+It was a policy misconfiguration. Fixed.
+
+Now to mount the actual thing on loopback. But actually I think I'll do all the mounting as root...
+
+$ sudo mkdir /mnt/s3backer /mnt/squashfs /mnt/overlay /var/overlay /var/overlay_work
+$ sudo s3backer --readOnly --accessEC2IAM=TrainingVM --region=eu-west-1 --prefix=s3b1/ squash-test-1 /mnt/s3backer
+$ sudo mount -o loop,ro /mnt/s3backer/file /mnt/squashfs/
+$ sudo mount -t overlay -o lowerdir=/mnt/squashfs,upperdir=/var/overlay,workdir=/var/overlay_work overlay /mnt/overlay
+
+So things are a bit icky because I didn't get the UIDs right, but I can fix that on the overlay.
+And basically this is ninja-fast. So it's definitely possible I could mount this and map it onto
+/home/training and work like that. Then to re-image I'll need to:
+
+1) Re-make the squashfs
+2) Re-generate the s3backer chunks
+
+Now previously I made the file exactly large enough for the FS, but I see no reason to do this as it only uses space
+as chunks are added. So I say make the s3backer file 1TB and set the block size to 8* the squashfs block size.
+
+Then I can run mksquashfs directly onto the /mnt/s3backer/file, removing the need for a temp file. So this is pretty
+cool. But also complicated. If the s3fs approach works it will be simpler, but then it's problematic for small files.
+And will that work with overlay? And if so, how will I update the thing? Hmmm.
+
+I think for course 1 we probably just want to clone the data across the VMs and suck it up. Then we can look if
+doing any of this shared files faff is worth the cost.
+
+But first, the file copy to the second bucket finished, so let us mount that.
+
+$ sudo mkdir /mnt/s3fs
+$ sudo s3fs -o ro,iam_role="TrainingVM" -o endpoint=eu-west-1 -o url="https://s3-eu-west-1.amazonaws.com" -o umask=002,uid=0,allow_other  s3fs-test-1 /mnt/s3fs
+
+And OK the performance isn't bad, but this won't cut it for many small files. If we use s3fs then it will have to be
+as a data store, with the software still living on the image.
+
+Just as a final test, let's do a mksquashfs on /mnt/qcow/home/training/Software/ensembl-vep and save it directly to s3.
+
+This time I'll force the UID to 1000, so (on my own laptop):
+
+# mksquashfs /mnt/qcow/home/training/Software/ensembl-vep ~tbooth2/mnt/s3fs/Software.squashfs -b $(( 131072 * 4 )) -keep-as-directory -force-uid 1000 -force-gid 1000
+
+This takes a while. I think mksquashfs writes the file then seeks to the start and writes there, which puts s3fs in a pickle.
+
+s3backer won't have this problem, and we can get around it by making the file locally and copying it.
+
+Now to mount the thing (back on my cloud VM):
+
+$ sudo mkdir /mnt/squash_on_s3fs
+$ sudo mount -o loop,ro /mnt/s3fs/Software.squashfs /mnt/squash_on_s3fs/
+
+And how does it look?
+
+Well, it seems to work remarkably well. Yeah. It's fast.
+
+So this tells me that snap-type packages served off s3 via s3fs are definitely plausible. Could we have a single
+squash served off a single file in S3, basically what I was doing with s3backer but with s3fs instead? Maybe,
+but if the total size goes too high then we have problems. Also writing the file direct to s3fs is not a good idea.
+
+So, again we have some complexity, and there is no one-size-fits all solution. If we have individual snaps we have
+to be disciplined and make the snaps rather than just bunging the stuff in the home dir. And the snaps will have to
+be auto-mounted on boot (ie. actually use snapd). If we have an overlay solution
+then the imaging process will have to involve:
+
+1) Re-make the squash from the overlay (assuming it is just for /home/training)
+1a) If using squash-on-s3fs this means connecting an extra ebs volume, making
+    the snapshot, then copying it to s3 via whatever tool, then trashing the EBS.
+2) Snapshot the EC2 image
+3) Always ensure the right image boots with the right overlay (hmmmm?)
+
+Or if we have a s3fs-as-ftp option, then we need to:
+
+1) Identify large files and move them to s3fs
+2) Symlink them back on the image
+3) Accept that the software directory will still just have to be cloned
+
+K
+
+I can refine this by having a script that symlinks everything found in the bucket, so then
+part 2 could be automated by running the script. That might be nice. Make an overlay directory
+and copy the fs structure, then for each file found the target is removed and replaced with a
+symlink. Yup.
+
+So a check on the disk suggests that:
+
+# find /mnt/qcow/home/training -size +500M
+
+/mnt/qcow/home/training/05_Count_generation_and_differential_expression/data
+/mnt/qcow/home/training/Variants
+
+Should be on s3fs, saving 18GB. That's not bad.
+
+So the final thing before I shut all this down - how to auto-mount the s3 bucket at /mnt/s3fs on boot.
+Should be simple, right? No loopback mount or anything weird.
+
+In /etc/fstab...
+
+---
+
+Configuring this as part of the ansible build. We need:
+
+1) s3fs but we can nick the newer .deb from from cosmic
+2) an entry in /etc/fstab
+3) that's it

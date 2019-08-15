@@ -1,0 +1,18 @@
+We need to fudge an RPM for TigerVNC that SUSE will accept as being compatible with
+itself. I'll use the spice RPM as a template.
+
+OK, that failed. And I think making RPMs is a dead loss. Instead, start with a squash
+file and just install that. The squash file is made very simply by unpacking the
+tigervnc 32-bit download (tar -xvaf ...) and then repacking with mksquashfs.
+
+Now on each thin client I need to:
+
+1) Get a root shell
+2) Give the thin client access to the files in this dir (via USB or whatever)
+3) Run "squash-merge" to get rid of tightvnc
+4) Remove the tightvnc squash file from /var/lib/addons
+5) Copy tigervnc-1.9.0.squash to /var/lib/addons
+6) squash-merge -m tigervnc-1.9.0
+7) Copy over auto_tigervnc.sh
+
+I'll make a script 'add_it.sh' that does from step 3...

@@ -1,0 +1,74 @@
+So we have demonstrated that TigerVNC works nicely on the thin client, and I have notes
+(written) on how to set up a VM for same, with XKCD.
+
+The challenge this time is to work out how we mate the client to the VM. My idea is
+that we have a web service that runs somewhere (!) and simply serves a list of running
+training VMs, either as HTML or as JSON. The former can be used by anyone who installed
+their own client. The latter will be used by the thin clients to auto-connect.
+
+Bear in mind we do have an alternative approach, where a single gateway instance proxies
+traffic to the various VMs with a single IP. In this case we could use DynDNS to locate
+the host and we'd just need a port number on each client. I think the need for a query
+script would stand, however.
+
+So -
+1) Use the aws command line to make the query on this box
+
+2) Wrap it in a little wrapper (PHP or ??)
+
+3) That will do for now
+
+Installing the CLI is simple:
+
+$ pip3 install awscli --upgrade --user
+
+EC2 queries:
+
+https://stackoverflow.com/questions/23936216/how-can-i-get-list-of-only-running-instances-when-using-ec2-describe-tags
+
+So let's start a VM, and I'll name it training-01 and give it tag trainingvm=01 (both settable under tags).
+
+Now,
+
+$ aws ec2 describe-instances --query 'Reservations[*].Instances[*].[InstanceId]' --filters Name=training-01 --output text
+
+An HTTP Client raised and unhandled exception: __init__() got an unexpected keyword argument 'ssl_context'
+
+Looks like an URRLib issue?! [Tinkers] OK, let's have a VEnv to make things work proper. And I even had to tinker with
+that as for some reason urllib won't override the system version. But it works after adding a '.' to
+/home/tbooth2/py3venv/lib/python3.5/site-packages/easy-install.pth
+
+So.
+
+$ ~/py3venv/bin/aws ec2 describe-instances --query 'Reservations[*].Instances[*].[InstanceId]' --filters Name=training-01 --output text
+
+You must specify a region. You can also configure your region by running "aws configure".
+
+Better. I followed the instrux and configured it with the read-only credentials from Duncan (also the region + JSON output).
+Now I get:
+
+"An error occurred (InvalidParameterValue) when calling the DescribeInstances operation: The filter 'training-01' is invalid"
+
+Hmmm. https://docs.aws.amazon.com/cli/latest/reference/ec2/describe-instances.html
+
+$ ~/py3venv/bin/aws ec2 describe-instances --filters Name=tag:Name,Values='training-??'
+
+or.
+
+$ ~/py3venv/bin/aws ec2 describe-instances --filters Name=tag-key,Values='trainingvm'
+
+Cool. It seems easier to just get back all the JSON and parse it myself than to faff with the --query syntax.
+
+Can I call the module direct from a python script?
+https://github.com/aws/aws-cli (not sure) - yes, it's a pretty simple wrapper around botocore. Cool.
+
+See summarize_instances.py. This is ready to be tweaked to go on any web server that can host a Python script.
+https://modwsgi.readthedocs.io/en/master/getting-started.html
+
+Or even easier, I just added it as a CGI script here:
+
+https://auth.genomics.ed.ac.uk/cgi-bin/si
+
+or
+
+https://auth.genomics.ed.ac.uk/cgi-bin/si?json=1

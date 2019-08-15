@@ -1,0 +1,68 @@
+# Create the training user. Note the TigerVNC setup is done separately.
+
+- name: Make a training user
+  user:
+    name: training
+    comment: Training,,,
+    shell: /bin/bash
+    group: users
+    groups: audio,video,plugdev
+
+# The training user may run 'apt' as sudo. Note I also need sudo aliased to "sudo -n", as per
+# https://unix.stackexchange.com/questions/303771/prevent-sudo-from-prompting-for-password-when-running-non-permitted-command
+- name: Enable password-less sudo apt for training
+  copy:
+    dest: /etc/sudoers.d/10-training-apt-only
+    mode: 0440
+    content: |
+             # Added by make_training_user.yml from Ansible
+             # The training user may run apt (and apt-get and synaptic) as root
+             training ALL=(root) NOPASSWD: /usr/bin/apt, /usr/bin/apt-get, /usr/sbin/synaptic ""
+    validate: "/usr/sbin/visudo -c -f %s"
+
+
+# If the user has a ~/bin directory, they can put commands in it.
+# Note the interaction with my custom ~/.bashrc for this
+- name: Make /home/training/bin subdir
+  become_user: training
+  file:
+    state: directory
+    path: /home/training/bin
+    mode: 0755
+
+# Ensure that XFCE4 does not try to start a screen saver...
+
+- name: Make .config/xfce4 subdir
+  become_user: training
+  file:
+    state: directory
+    path: /home/training/.config/xfce4/xfconf/xfce-perchannel-xml
+    mode: 0755
+
+# Turn off DPMS, but if there is already a config leave it in place
+- name: Disable xfce4 dpms
+  become_user: training
+  copy:
+    force: no
+    dest: /home/training/.config/xfce4/xfconf/xfce-perchannel-xml/xfce4-power-manager.xml
+    content: |
+             <?xml version="1.0" encoding="UTF-8"?>
+             <channel name="xfce4-power-manager" version="1.0">
+                 <property name="xfce4-power-manager" type="empty">
+                 <property name="power-button-action" type="empty"/>
+                 <property name="dpms-enabled" type="bool" value="false"/>
+                 <property name="dpms-on-ac-off" type="uint" value="60"/>
+                 <property name="dpms-on-ac-sleep" type="uint" value="60"/>
+                 <property name="blank-on-ac" type="int" value="0"/>
+               </property>
+             </channel>
+    validate: "/usr/bin/xmlstarlet val %s"
+
+# Add the custom .bashrc that sees the 'pretty' hostname and does the autosquash tricks etc.
+- name: Add custom .bashrc to /home/training
+  become_user: training
+  copy:
+    dest: /home/training/.bashrc
+    src: ../../custom.bashrc
+    mode: 0644
+    validate: null # Could try: '[ "`bash %s`" = "" ]' but it doesn't really work
