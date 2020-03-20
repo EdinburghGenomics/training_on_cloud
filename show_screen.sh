@@ -3,9 +3,9 @@
 # Show the screen of an unsuspecting user...
 vm_to_show=`printf "%02d\n" $1`
 
-# USe the CSV output it's easier to manipulate in shell
-vm_addr=$( wget -q -O- https://egcloud.bio.ed.ac.uk/si?csv=1 | \
-            awk -F , '$1=="'"$vm_to_show"'" {print $2}' )
+# Use the CSV output it's easier to manipulate in shell
+magic_url='https://8xupy2m4r1.execute-api.eu-west-1.amazonaws.com/default/summarize_instances?csv=1'
+vm_addr=$( wget -q -O- "$magic_url" | awk -F , '$1=="'"$vm_to_show"'" {print $2}' )
 
 if [ -z "$vm_addr" ] ; then
     echo "No VM found with ID=$vm_to_show"
