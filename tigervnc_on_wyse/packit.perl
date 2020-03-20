@@ -165,7 +165,7 @@ if(%urls)
     '';
 }
 
-# OK, now run shar.  No need to start a subshell as far as I can see, but I do need 
+# OK, now run shar.  No need to start a subshell as far as I can see, but I do need
 # to disable exit 0 from happening, and provide a uudecode alternative, and hook my md5sum
 # check.
 echo '#Add hook to ensure the payload runs after successful unpacking',
@@ -181,6 +181,7 @@ echo '#Add hook to ensure the payload runs after successful unpacking',
      ' fi',
      'else \exit "$@"',
      'fi }',
+     'shopt -s expand_aliases || true',
      'alias exit=nexit';
 
 echo '#Always prefer Perl for uudecoding',

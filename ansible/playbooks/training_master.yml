@@ -7,9 +7,9 @@
   tasks:
     - name: Fetch tigervnc tarball (see https://bintray.com/tigervnc/stable/tigervnc/)
       get_url:
-        url: https://bintray.com/tigervnc/stable/download_file?file_path=tigervnc-1.9.0.x86_64.tar.gz
+        url: https://bintray.com/tigervnc/stable/download_file?file_path=tigervnc-1.10.1.x86_64.tar.gz
         dest: /root/tigervnc.x86_64.tar.gz
-        checksum: sha256:79b0728e7b62e9d93af9d5696c593aea3ddc8378c0f9326fae88f68435fca7c3
+        checksum: sha256:fb8f94a5a1d77de95ec8fccac26cb9eaa9f9446c664734c68efdffa577f96a31
 
     - name: Fetch R studio (see https://www.rstudio.com/products/rstudio/download)
       get_url:
@@ -47,6 +47,18 @@
       apt_repository:
         repo: "deb https://cloud.r-project.org/bin/linux/ubuntu bionic-cran35/"
         filename: cran
+
+    # Enable the deb-src sources for Universe packages (note ansible_distribution_release gives me
+    # "bionic", "cosmic", etc.
+    - name: Add deb-src to sources.list
+      apt_repository:
+        repo: "deb-src http://eu-west-1.ec2.archive.ubuntu.com/ubuntu/ {{ item }} universe"
+        state: present
+      with_items:
+        - "{{ ansible_distribution_release }}"
+        - "{{ ansible_distribution_release }}-updates"
+
+    # deb-src http://gb.archive.ubuntu.com/ubuntu/ bionic-updates universe
 
     - name: APT update and upgrade
       apt:
