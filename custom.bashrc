@@ -25,7 +25,7 @@ HISTSIZE=1000
 HISTFILESIZE=2000
 
 # auto-reset the shell history if the machine is re-imaged, so people on the course
-# don't see our own commend history
+# don't see our own command history
 function reset_shell(){
     rm -f ~/.bash_history
     history -c

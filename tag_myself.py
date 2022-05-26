@@ -7,6 +7,7 @@ import requests
 import botocore.session
 import random
 from time import sleep
+from subprocess import run, PIPE
 
 def get_my_info():
     """ Get my own instance ID. There really is no botocore wrapper to get this.
@@ -75,8 +76,11 @@ def rename_myself():
     # Get all the info
     i_info = get_instance_info(client)
 
-    # Get my own info. Should be exactly one.
+    # Get my own info. Should be exactly one, assuming the instance is correctly tagged
     my_info, = [ i for i in i_info if i['instanceId'] == my_info['instanceId'] ]
+
+    # Also see what the hostname says
+    current_num = get_current_number()
 
     # So by the above notes I need to rename myself under these conditions:
     if my_info['Name'] in ['training', 'training-00']:
@@ -85,6 +89,9 @@ def rename_myself():
     elif my_info['VM'] in [ i['VM'] for i in i_info if i['instanceId'] < my_info['instanceId'] ]:
         # I renamed myself but there's a clash and I need to change
         print("Name conflict on training-{} with VM having a lower instanceId".format(my_info['VM']))
+    elif current_num != my_info['VM']:
+        print("Tags say I am {} but hostname says {}. Will fix hostname to match tag.".format(my_info['VM'], current_num))
+        return my_info['VM']
     else:
         # No I'm actually fine.
         print("I am training-{}. Nothing to do.".format(my_info['VM']))
@@ -112,6 +119,19 @@ def rename_myself():
     newnumstr = rename_myself() or newnumstr
 
     return newnumstr
+
+def get_current_number():
+    """Checks the current number of the VM as set in the pretty hostname.
+    """
+    res = run( ["hostnamectl", "--pretty" , "status"],
+               stdout = PIPE,
+               universal_newlines = True)
+
+    if not res.stdout.startswith("vm-"):
+        return None
+
+    return (res.stdout.rstrip()[3:] or None)
+
 
 def main():
 
